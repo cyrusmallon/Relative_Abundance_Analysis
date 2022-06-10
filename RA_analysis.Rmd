@@ -1,0 +1,259 @@
+---
+title: "Relative Abudance Analydid"
+author: "Cyrus A. Mallon"
+date: '2022-05-27'
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+  word_document: default
+editor_options:
+  chunk_output_type: console
+documentclass: article
+classoption:
+- landscape
+- a4paper
+---
+
+\pagenumbering{gobble}
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(here)
+library(tidyverse)
+library(kableExtra)
+```
+
+# Load Data
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+#import data
+data <- utils::read.csv2(here("data/relab1.csv"), header = TRUE, sep = ";")
+```
+
+#Data Prep
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+#make columns and fill them with NAs
+data["replicate"] <- NA
+data["Time"] <- NA
+data["Community"] <- NA
+data["SpRich"] <- NA
+
+#fill columns by matching from origional dataset and replacing with desired label
+data$replicate[grepl("R1",data$sample)] <- "Rep_1"
+data$replicate[grepl("R2",data$sample)] <- "Rep_2"
+data$replicate[grepl("R3",data$sample)] <- "Rep_3"
+
+data$Time[grepl("D7",data$sample)] <- 7
+data$Time[grepl("D13",data$sample)] <- 14  #the one sample that was sequenced from D13
+data$Time[grepl("D14",data$sample)] <- 14
+data$Time[grepl("D21",data$sample)] <- 21
+data$Time[grepl("D28",data$sample)] <- 28
+data$Time[grepl("D31",data$sample)] <- 31
+
+data$Community[grepl("ABCD_",data$sample, fixed = TRUE)] <- "PT:EC:MF:SM"
+
+data$Community[grepl("A_",data$sample, fixed=TRUE)] <- "PT"  ####should it be data??
+data$Community[grepl("B_",data$sample, fixed=TRUE)] <- "EC"
+data$Community[grepl("C_",data$sample, fixed=TRUE)] <- "MF"
+data$Community[grepl("D_",data$sample, fixed=TRUE)] <- "SM"
+
+data$Community[grepl("AB_",data$sample, fixed=TRUE)] <- "PT:EC"
+data$Community[grepl("AC_",data$sample, fixed=TRUE)] <- "PT:MF"
+data$Community[grepl("AD_",data$sample, fixed=TRUE)] <- "PT:SM"
+data$Community[grepl("BC_",data$sample, fixed=TRUE)] <- "EC:MF"
+data$Community[grepl("BD_",data$sample, fixed=TRUE)] <- "EC:SM"
+data$Community[grepl("CD_",data$sample, fixed=TRUE)] <- "MF:SM"
+
+data$Community[grepl("ABC_",data$sample, fixed = TRUE)] <- "PT:EC:MF"
+data$Community[grepl("ACD_",data$sample, fixed = TRUE)] <- "PT:MF:SM"
+data$Community[grepl("BCD_",data$sample, fixed = TRUE)] <- "EC:MF:SM"
+data$Community[grepl("ABD_",data$sample, fixed = TRUE)] <- "PT:EC:SM"
+
+data$Community[grepl("ABCD_",data$sample, fixed = TRUE)] <- "PT:EC:MF:SM"
+
+data$SpRich[str_detect(data$sample,"^A_|^B_|^C_|^D_")] <- 1
+data$SpRich[str_detect(data$sample,"^AB_|^AC_|^AD_|^BC_|^BD_|^CD_")] <- 2
+data$SpRich[str_detect(data$sample,"^ABC_|^ABD_|^ACD_|^BCD")] <- 3
+data$SpRich[str_detect(data$sample,"^ABCD")] <- 4
+
+
+#change Community, Time, and Sample to a factor
+data$sample <- as.factor(data$sample)
+data$Community <- as.factor(data$Community)
+data$replicate <- as.factor(data$replicate)
+
+#reorder factor levels for communigy
+data$Community <- factor(data$Community, levels = c(
+  "PT:EC:MF:SM",
+  "PT:EC:MF","PT:MF:SM", "EC:MF:SM","PT:EC:SM",
+  "PT:EC", "PT:MF","PT:SM","EC:MF", "EC:SM","MF:SM",
+  "PT","EC","MF","SM"
+))
+
+#change column names to species abbreviations
+as_tibble(data) %>%
+ rename(PT = A, EC = B, MF = C, SM = D)
+
+
+#seperate legend for species key
+legend <- c("PT = P. tundrae", "EC = E. coli", "MF = M. foliorum", "SM = S. maltophilia")
+
+legend_df <- data.frame()
+
+col_vec13 <- c("#ff6361", "#58508d","#ffa600", "#003f5c")
+col_vec14 <- c("#58508d","#003f5c","#ffa600", "#ff6361", "#bc5090")
+```
+
+\newpage
+
+# Plot Data
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+#plotting
+data %>%
+  dplyr::filter(.,!str_detect(sample,"ABC_R2_D*|ABC_R3_D*|AB_R1_D*|AB_R3_D*")) %>%
+  pivot_longer(.,cols = c(2:5), names_to = "Species", values_to = "Relative_Abundance") %>%
+  dplyr::group_by(Time,Community, Species,SpRich) %>%
+  dplyr::summarise(RelAb = mean(Relative_Abundance)) %>%
+  mutate(across(RelAb, ~ ifelse(.x <= 0.005, 0.00, .x))) %>%
+  ggplot(.,aes(x = Time, y = RelAb, group = Species,fill = Species))+
+  geom_area(position = "fill")+
+  scale_fill_manual(values = col_vec13, name="species", labels = c(expression(italic("P. tundrae")),
+                                                                   expression(italic("E. coli")),
+                                                                   expression(italic("M. foliorum")),
+                                                                   expression(italic("S. maltophilia")))) +
+  facet_wrap(vars(Community))+
+  ylab("Relative Abundance")+
+  xlab("Day")+
+  scale_x_continuous(breaks=c(7,14,21,28,31))+
+  labs(title = "Community Composition Through Time")+
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+         #panel.background = element_rect(fill = "transparent"), # bg of the panel
+         plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+         panel.grid.major = element_blank(), # get rid of major grid
+         #panel.grid.minor = element_blank(), # get rid of minor grid
+         legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+         legend.box.background = element_rect(fill = "transparent"), # get rid of legend panel bg,
+         #rect = element_rect(fill = "transparent"), # all rectangles
+         #legend.position = "none"
+        legend.text.align = 0
+  )
+```
+
+\newpage
+
+# Table Replicates
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+as_tibble(data) %>%
+  rename(PT = A, EC = B, MF = C, SM = D) %>%
+  dplyr::filter(.,!str_detect(sample,"ABC_R2_D*|ABC_R3_D*|AB_R1_D*|AB_R3_D*")) %>%
+  select(!sample) %>%
+  relocate(SpRich, Community, Time, replicate, PT, EC, MF, SM) %>%
+  group_by(Community) %>%
+  summarize(n_replicates = n_distinct(replicate)) %>%
+  kbl() %>%
+  kable_styling()
+```
+
+\newpage
+
+# Table Avg Relative Abuance of Species Across Entire Experiment, per time point
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+as_tibble(data) %>%
+  rename(PT = A, EC = B, MF = C, SM = D) %>%
+  dplyr::filter(.,!str_detect(sample,"ABC_R2_D*|ABC_R3_D*|AB_R1_D*|AB_R3_D*")) %>%
+  select(!sample) %>%
+  relocate(SpRich, Community, Time, replicate, PT, EC, MF, SM) %>%
+  group_by(SpRich, Community, Time) %>%
+  summarize(PT_mean = mean(PT), PT_sd = sd(PT), EC_mean = mean(EC), EC_sd = sd(EC), MF_mean = mean(MF), MF_sd = sd(MF), SM_mean = mean(SM), SM_sd = sd(SM)) %>%
+  kbl(digits = 3) %>%
+  kable_styling()
+
+```
+
+# Table Avg Relative Abuance of Species Across Entire Experiment, per all time points
+
+\newpage
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+#number of replicates column
+n_reps <-
+as_tibble(data) %>%
+  rename(PT = A, EC = B, MF = C, SM = D) %>%
+  dplyr::filter(.,!str_detect(sample,"ABC_R2_D*|ABC_R3_D*|AB_R1_D*|AB_R3_D*")) %>%
+  select(!sample) %>%
+  relocate(SpRich, Community, Time, replicate, PT, EC, MF, SM) %>%
+  group_by(Community) %>%
+  summarize(n_replicates = n_distinct(replicate)) %>%
+  arrange(desc(Community))
+
+as_tibble(data) %>% 
+  rename(PT = A, EC = B, MF = C, SM = D) %>%
+  dplyr::filter(.,!str_detect(sample,"ABC_R2_D*|ABC_R3_D*|AB_R1_D*|AB_R3_D*")) %>%
+  select(!sample) %>%
+  relocate(SpRich, Community, Time, replicate, PT, EC, MF, SM) %>% 
+  mutate(across(c(PT,EC,MF,SM), ~ ifelse(.x <= 0.005, 0.00, .x))) %>%
+  group_by(SpRich, Community) %>%
+  summarize(PT_mean = mean(PT), PT_sd = sd(PT), EC_mean = mean(EC), EC_sd = sd(EC), MF_mean = mean(MF), MF_sd = sd(MF), SM_mean = mean(SM), SM_sd = sd(SM)) %>%
+  inner_join(.,n_reps, by = "Community") %>%
+   relocate(SpRich, Community, n_replicates, PT_mean, PT_sd, EC_mean, EC_sd, MF_mean, MF_sd, SM_mean, SM_sd) %>% 
+  mutate(across(3:9, ~ . * 100)) %>%
+  mutate(across(3:9, round,2)) %>%
+     #if RA is zero, then sd is also zero
+    mutate(PT_sd = case_when(PT_mean == 0 ~ 0.00, TRUE ~ PT_sd),
+           EC_sd = case_when(EC_mean == 0 ~ 0.00, TRUE ~ EC_sd),
+           MF_sd = case_when(MF_mean == 0 ~ 0.00, TRUE ~ MF_sd),
+           SM_sd = case_when(SM_mean == 0 ~ 0.00, TRUE ~ SM_sd)) %>%
+  #not detected in sequencing, but isolated from community.
+  mutate(across(c(7,8), ~cell_spec(round(.x, 2), background = case_when(Community == "PT:EC:MF:SM" ~ "yellow", TRUE ~ "white")))) %>%
+  #detected in sequencing, but not isolated from community.
+  mutate(across(c(3,4), ~cell_spec(round(.x,2), background = case_when(Community == "PT:EC:MF:SM" ~ "pink", TRUE ~ "white")))) %>% 
+  kbl(format = "latex",escape = F, digits = 2, booktabs = T,
+      col.names = 
+        c("richness", "community", "replicates", "PT mean", "PT sd","EC mean", "EC sd", "MF mean", "MF sd", "SM mean", "SM sd" )) %>%
+  #kable_paper(full_width = F) #%>%
+  #kable_styling(latex_options="scale_down")
+  kable_styling(font_size = 8)
+```
+
+
+
+# Table Avg Relative Abuance Per Species, excluding monoculture
+
+\newpage
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+#mean relative abundance of species when it is present
+#and not considering the monocultures
+as_tibble(data) %>% 
+  rename(PT = A, EC = B, MF = C, SM = D) %>%
+  dplyr::filter(.,!str_detect(sample,"ABC_R2_D*|ABC_R3_D*|AB_R1_D*|AB_R3_D*")) %>%
+  select(!sample) %>%
+  relocate(SpRich, Community, Time, replicate, PT, EC, MF, SM) %>% 
+  mutate(across(c(PT,EC,MF,SM), ~ ifelse(.x <= 0.005, 0.00, .x))) %>%
+  pivot_longer(cols = c("PT", "EC", "MF","SM"), names_to = "species", values_to = "RA") %>%
+  filter(Community != "PT", Community != "EC", Community != "MF", Community != "SM") %>%
+  group_by(species) %>% 
+  filter(RA > 0) %>%
+  summarize(mean_RA = mean(RA))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

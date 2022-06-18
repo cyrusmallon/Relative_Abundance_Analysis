@@ -18,7 +18,6 @@ classoption:
 \pagenumbering{gobble}
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
-# jot
 library(here)
 library(tidyverse)
 library(kableExtra)
